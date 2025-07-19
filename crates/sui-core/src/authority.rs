@@ -2,6 +2,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::cache_update_handler::pool_related_object_ids;
 use crate::congestion_tracker::CongestionTracker;
 use crate::consensus_adapter::ConsensusOverloadChecker;
 use crate::execution_cache::ExecutionCacheTraitPointers;
@@ -14,6 +15,7 @@ use crate::rpc_index::RpcIndexStore;
 use crate::traffic_controller::metrics::TrafficControllerMetrics;
 use crate::traffic_controller::TrafficController;
 use crate::transaction_outputs::TransactionOutputs;
+use crate::tx_handler::TxHandler;
 use crate::verify_indexes::{fix_indexes, verify_indexes};
 use anyhow::anyhow;
 use arc_swap::{ArcSwap, Guard};
@@ -56,6 +58,7 @@ use std::{
     sync::Arc,
     vec,
 };
+use dashmap::DashSet;
 use sui_config::node::{AuthorityOverloadConfig, StateDebugDumpConfig};
 use sui_config::NodeConfig;
 use sui_protocol_config::PerObjectCongestionControlMode;
@@ -189,6 +192,7 @@ use crate::validator_tx_finalizer::ValidatorTxFinalizer;
 use sui_types::committee::CommitteeTrait;
 use sui_types::deny_list_v2::check_coin_deny_list_v2_during_signing;
 use sui_types::execution_config_utils::to_binary_config;
+use crate::cache_update_handler::CacheUpdateHandler;
 
 #[cfg(test)]
 #[path = "unit_tests/authority_tests.rs"]
@@ -949,6 +953,12 @@ pub struct AuthorityState {
 
     /// Traffic controller for Sui core servers (json-rpc, validator service)
     pub traffic_controller: Option<Arc<TrafficController>>,
+
+    pub cache_update_handler: CacheUpdateHandler,
+
+    pub tx_handler: TxHandler,
+
+    pub pool_related_ids: DashSet<ObjectID>,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -1616,7 +1626,7 @@ impl AuthorityState {
             .cloned()
             .unwrap_or(std::env::temp_dir());
         let epoch_store = self.load_epoch_store_one_call_per_task();
-
+        let raw_events = inner_temporary_store.events.clone();
         NodeStateDump::new(
             tx_digest,
             effects,
@@ -1868,6 +1878,30 @@ impl AuthorityState {
                 &mut None,
             );
 
+        let raw_events = inner_temp_store.events.clone();
+
+        let sui_events: Vec<SuiEvent> = raw_events
+            .data
+            .iter()
+            .enumerate()
+            .map(|(seq, event)| {
+                let mut layout_resolver = epoch_store.executor().type_layout_resolver(Box::new(
+                    PackageStoreWithFallback::new(
+                        &inner_temp_store,
+                        self.get_backing_package_store(),
+                    ),
+                ));
+                let layout = layout_resolver.get_annotated_layout(&event.type_)?;
+                SuiEvent::try_from(
+                    event.clone(),
+                    *certificate.digest(),
+                    seq as u64,
+                    None,
+                    layout,
+                )
+            })
+            .collect::<Result<_, _>>()?;
+
         if let Some(expected_effects_digest) = expected_effects_digest {
             if effects.digest() != expected_effects_digest {
                 // We dont want to mask the original error, so we log it and continue.
@@ -1935,6 +1969,15 @@ impl AuthorityState {
                     .computation_cost as f64
                     / elapsed,
             );
+        }
+
+        if !certificate.transaction_data().is_system_tx()
+            && !sui_events.is_empty()
+            && !transaction_outputs.written.is_empty()
+        {
+            let _ = self
+                .tx_handler
+                .send_sync(&transaction_outputs.effects, sui_events);
         }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
@@ -3222,6 +3265,9 @@ impl AuthorityState {
             chain_identifier,
             congestion_tracker: Arc::new(CongestionTracker::new()),
             traffic_controller,
+            cache_update_handler: CacheUpdateHandler::new(),
+            tx_handler: TxHandler::default(),
+            pool_related_ids: pool_related_object_ids(),
         });
 
         let state_clone = Arc::downgrade(&state);

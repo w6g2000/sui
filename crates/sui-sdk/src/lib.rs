@@ -102,6 +102,7 @@ use sui_types::base_types::{ObjectID, ObjectInfo, SuiAddress};
 
 use crate::apis::{CoinReadApi, EventApi, GovernanceApi, QuorumDriverApi, ReadApi};
 use crate::error::{Error, SuiRpcResult};
+use crate::ipc_client::IpcClient;
 
 pub mod apis;
 pub mod error;
@@ -109,6 +110,7 @@ pub mod json_rpc_error;
 pub mod sui_client_config;
 pub mod verify_personal_message_signature;
 pub mod wallet_context;
+pub mod ipc_client;
 
 pub const SUI_COIN_TYPE: &str = "0x2::sui::SUI";
 pub const SUI_LOCAL_NETWORK_URL: &str = "http://127.0.0.1:9000";
@@ -148,6 +150,8 @@ pub struct SuiClientBuilder {
     ws_ping_interval: Option<Duration>,
     basic_auth: Option<(String, String)>,
     headers: Option<HashMap<String, String>>,
+    ipc_path: Option<String>,
+    ipc_pool_size: usize,
 }
 
 impl Default for SuiClientBuilder {
@@ -159,6 +163,8 @@ impl Default for SuiClientBuilder {
             ws_ping_interval: None,
             basic_auth: None,
             headers: None,
+            ipc_path: None,
+            ipc_pool_size: 50,
         }
     }
 }
@@ -273,6 +279,16 @@ impl SuiClientBuilder {
             None
         };
 
+        let ipc = if let Some(ref ipc_path) = self.ipc_path {
+            Some(
+                IpcClient::new(ipc_path, self.ipc_pool_size)
+                    .await
+                    .map_err(|e| error::Error::IpcError(e.to_string()))?,
+            )
+        } else {
+            None
+        };
+
         let mut http_builder = HttpClientBuilder::default()
             .max_request_size(2 << 30)
             .set_headers(headers.clone())
@@ -286,7 +302,7 @@ impl SuiClientBuilder {
 
         let info = Self::get_server_info(&http, &ws).await?;
 
-        let rpc = RpcClient { http, ws, info };
+        let rpc = RpcClient { http, ws, info, ipc };
         let api = Arc::new(rpc);
         let read_api = Arc::new(ReadApi::new(api.clone()));
         let quorum_driver_api = QuorumDriverApi::new(api.clone());
@@ -497,6 +513,7 @@ pub struct SuiClient {
 pub(crate) struct RpcClient {
     http: HttpClient,
     ws: Option<WsClient>,
+    ipc: Option<IpcClient>,
     info: ServerInfo,
 }
 

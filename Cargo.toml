@@ -642,6 +642,7 @@ p384 = { version = "0.13.0", default-features = false, features = [
   "sha384",
 ] }
 ciborium = "0.2"
+interprocess = { version = "2.2", features = ["tokio"] }
 
 # anemo dependencies
 anemo = { git = "https://github.com/mystenlabs/anemo.git", rev = "9c52c3c7946532163a79129db15180cdb984bab4" }
