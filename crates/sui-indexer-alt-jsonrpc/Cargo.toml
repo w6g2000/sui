@@ -15,7 +15,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-graphql = { workspace = true, features = ["dataloader"] }
+async-graphql = { workspace = true, default-features = false, features = [] }
 async-trait.workspace = true
 axum.workspace = true
 bcs.workspace = true
