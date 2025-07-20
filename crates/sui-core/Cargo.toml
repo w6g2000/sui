@@ -85,6 +85,14 @@ sui-types.workspace = true
 nonempty.workspace = true
 bincode.workspace = true
 interprocess.workspace = true
+# —— 本就应该有的行，缺哪个加哪个 ——
+consensus-types.workspace      = true
+governor.workspace             = true
+simple_moving_average.workspace = true
+sysinfo.workspace              = true
+strum.workspace                = true
+strum_macros.workspace         = true
+pin-project-lite.workspace     = true
 
 [dev-dependencies]
 clap.workspace = true
