@@ -700,7 +700,7 @@ sui-transactional-test-runner = { path = "crates/sui-transactional-test-runner" 
 sui-types = { path = "crates/sui-types" }
 sui-upgrade-compatibility-transactional-tests = { path = "crates/sui-upgrade-compatibility-transactional-tests" }
 sui-verifier-transactional-tests = { path = "crates/sui-verifier-transactional-tests" }
-telemetry-subscribers = { path = "crates/telemetry-subscribers" }
+telemetry-subscribers = { path = "crates/telemetry-subscribers", default-features = false }
 test-cluster = { path = "crates/test-cluster" }
 transaction-fuzzer = { path = "crates/transaction-fuzzer" }
 typed-store = { path = "crates/typed-store" }
