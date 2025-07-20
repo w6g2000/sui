@@ -85,8 +85,6 @@ members = [
   "crates/mysten-metrics",
   "crates/mysten-network",
   "crates/mysten-service",
-  "crates/mysten-util-mem",
-  "crates/mysten-util-mem-derive",
   "crates/prometheus-closure-metric",
   "crates/shared-crypto",
   "crates/simulacrum",
@@ -629,7 +627,6 @@ move-vm-profiler = { path = "external-crates/move/crates/move-vm-profiler" }
 move-command-line-common = { path = "external-crates/move/crates/move-command-line-common" }
 move-transactional-test-runner = { path = "external-crates/move/crates/move-transactional-test-runner" }
 move-ir-types = { path = "external-crates/move/crates/move-ir-types" }
-move-prover = { path = "external-crates/move/crates/move-prover" }
 move-stackless-bytecode = { path = "external-crates/move/crates/move-stackless-bytecode" }
 move-symbol-pool = { path = "external-crates/move/crates/move-symbol-pool" }
 move-abstract-interpreter = { path = "external-crates/move/crates/move-abstract-interpreter" }
