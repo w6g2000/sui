@@ -789,6 +789,4 @@ consensus-types  = { path = "consensus/types" }
 consensus-config = { path = "consensus/config" }
 consensus-core   = { path = "consensus/core" }
 sui-http         = { path = "crates/sui-http" }
-
-# 如果也有 eyre 报错，就一并 patch 回去
-eyre = "0.6.8"
+eyre             = { version = "=0.6.8" }
