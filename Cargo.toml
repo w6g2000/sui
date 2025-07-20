@@ -223,7 +223,7 @@ members = [
 
 [workspace.package]
 # This version string will be inherited by sui-core, sui-faucet, sui-node, sui-tools, sui-sdk, sui-move-build, and sui crates.
-version = "1.40.3"
+version = "1.53.0"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -479,12 +479,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 roaring = "0.10.6"
 ron = "0.8.0"
 rstest = "0.16.0"
-rusoto_core = { version = "0.48.0", default-features = false, features = [
-  "rustls",
-] }
-rusoto_kms = { version = "0.48.0", default-features = false, features = [
-  "rustls",
-] }
 russh = "0.38.0"
 russh-keys = "0.38.0"
 rust-version = "1.56.1"
@@ -702,6 +696,7 @@ sui-graphql-rpc = { path = "crates/sui-graphql-rpc" }
 sui-graphql-rpc-client = { path = "crates/sui-graphql-rpc-client" }
 sui-graphql-rpc-headers = { path = "crates/sui-graphql-rpc-headers" }
 sui-genesis-builder = { path = "crates/sui-genesis-builder" }
+sui-http = { path = "crates/sui-http" }
 sui-indexer = { path = "crates/sui-indexer" }
 sui-indexer-alt = { path = "crates/sui-indexer-alt" }
 sui-indexer-alt-framework = { path = "crates/sui-indexer-alt-framework", default-features = false }
@@ -773,6 +768,9 @@ typed-store = { path = "crates/typed-store" }
 typed-store-error = { path = "crates/typed-store-error" }
 x = { path = "crates/x" }
 
+consensus-config = { path = "consensus/config" }
+consensus-core = { path = "consensus/core" }
+consensus-types = { path = "consensus/types" }
 consensus-simtests = { path = "consensus/simtests" }
 
 sui-execution = { path = "sui-execution" }
