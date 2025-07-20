@@ -91,14 +91,15 @@ sui-tls.workspace = true
 sui-types.workspace = true
 zeroize.workspace = true
 nonempty.workspace = true
-bincode.workspace = true
 interprocess.workspace = true
 
 [dev-dependencies]
+sui-move-build.workspace = true
 clap.workspace = true
 criterion.workspace = true
 expect-test.workspace = true
 fs_extra.workspace = true
+insta.workspace = true
 more-asserts.workspace = true
 pretty_assertions.workspace = true
 rstest.workspace = true
