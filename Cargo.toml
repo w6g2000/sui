@@ -278,7 +278,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 [workspace.dependencies]
 antithesis_sdk = "0.2.5"
 anyhow = "1.0.71"
-interprocess = { version = "1.1.0", features = ["tokio_support", "tokio"] }
+interprocess = { version = "2", features = ["tokio"] }
 arrow = "54"
 arrow-array = "54"
 arc-swap = { version = "1.5.1", features = ["serde"] }
