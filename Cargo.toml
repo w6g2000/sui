@@ -223,7 +223,7 @@ members = [
 
 [workspace.package]
 # This version string will be inherited by sui-core, sui-faucet, sui-node, sui-tools, sui-sdk, sui-move-build, and sui crates.
-version = "1.53.0"
+version = "1.40.3"
 
 [profile.release]
 # debug = 1 means line charts only, which is minimum needed for good stack traces
@@ -478,6 +478,12 @@ reqwest = { version = "0.12", default-features = false, features = [
 roaring = "0.10.6"
 ron = "0.8.0"
 rstest = "0.16.0"
+rusoto_core = { version = "0.48.0", default-features = false, features = [
+  "rustls",
+] }
+rusoto_kms = { version = "0.48.0", default-features = false, features = [
+  "rustls",
+] }
 russh = "0.38.0"
 russh-keys = "0.38.0"
 rust-version = "1.56.1"
