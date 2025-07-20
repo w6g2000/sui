@@ -18,7 +18,6 @@ base64.workspace = true
 bcs.workspace = true
 byteorder.workspace = true
 bytes.workspace = true
-chrono.workspace = true
 consensus-config.workspace = true
 consensus-types.workspace = true
 num_enum.workspace = true
