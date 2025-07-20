@@ -782,20 +782,12 @@ sui-execution = { path = "sui-execution" }
 # move-bytecode-verifier = { path = "external-crates/move/move-bytecode-verifier" }
 
 [patch.crates-io]
-# 只打开 tracing，其他默认特性保持关闭
-async-graphql       = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = ["tracing"] }
-async-graphql-axum  = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = ["tracing"] }
-async-graphql-value = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = ["tracing"] }
+# 彻底关闭默认特性 + 额外特性
+async-graphql       = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
+async-graphql-axum  = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
+async-graphql-value = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
 
 consensus-types   = { path = "consensus/types" }
 consensus-config  = { path = "consensus/config" }
 consensus-core    = { path = "consensus/core" }
 sui-http          = { path = "crates/sui-http" }
-
-[dependencies]
-tracing          = { version = "0.1", default-features = false, features = ["attributes"], optional = true }
-tracing-futures  = { version = "0.2", optional = true }
-
-[features]
-default = ["tracing"]
-tracing = ["dep:tracing", "dep:tracing-futures"]
