@@ -785,3 +785,10 @@ sui-execution = { path = "sui-execution" }
 async-graphql = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false }
 async-graphql-axum = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false }
 async-graphql-value = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false }
+consensus-types  = { path = "consensus/types" }
+consensus-config = { path = "consensus/config" }
+consensus-core   = { path = "consensus/core" }
+sui-http         = { path = "crates/sui-http" }
+
+# 如果也有 eyre 报错，就一并 patch 回去
+eyre = "0.6.8"
