@@ -668,7 +668,7 @@ sui-graphql-client-build = { git = "https://github.com/MystenLabs/sui-rust-sdk.g
 ### Workspace Members ###
 anemo-benchmark = { path = "crates/anemo-benchmark" }
 bin-version = { path = "crates/bin-version" }
-mysten-common = { path = "crates/mysten-common" }
+mysten-common = { path = "crates/mysten-common", package = "mysten-common" }
 mysten-metrics = { path = "crates/mysten-metrics" }
 mysten-network = { path = "crates/mysten-network" }
 mysten-service = { path = "crates/mysten-service" }
@@ -765,7 +765,7 @@ sui-tool = { path = "crates/sui-tool" }
 sui-transaction-builder = { path = "crates/sui-transaction-builder" }
 sui-transaction-checks = { path = "crates/sui-transaction-checks" }
 sui-transactional-test-runner = { path = "crates/sui-transactional-test-runner" }
-sui-types = { path = "crates/sui-types" }
+sui-types = { path = "crates/sui-types", package = "sui-types" }
 sui-upgrade-compatibility-transactional-tests = { path = "crates/sui-upgrade-compatibility-transactional-tests" }
 sui-verifier-transactional-tests = { path = "crates/sui-verifier-transactional-tests" }
 telemetry-subscribers = { path = "crates/telemetry-subscribers", default-features = false, features = [] }
