@@ -789,4 +789,3 @@ consensus-types  = { path = "consensus/types" }
 consensus-config = { path = "consensus/config" }
 consensus-core   = { path = "consensus/core" }
 sui-http         = { path = "crates/sui-http" }
-eyre             = { version = "=0.6.8" }
