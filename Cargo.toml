@@ -783,9 +783,9 @@ sui-execution = { path = "sui-execution" }
 
 [patch.crates-io]
 # 彻底关闭默认特性 + 额外特性
-async-graphql       = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
-async-graphql-axum  = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
-async-graphql-value = { git = "https://github.com/amnn/async-graphql", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
+async-graphql       = { git = "https://github.com/w6g2000/async-graphql.git", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
+async-graphql-axum  = { git = "https://github.com/w6g2000/async-graphql.git", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
+async-graphql-value = { git = "https://github.com/w6g2000/async-graphql.git", branch = "v7.0.1-react-18-graphiql-4", default-features = false, features = [] }
 
 consensus-types   = { path = "consensus/types" }
 consensus-config  = { path = "consensus/config" }
