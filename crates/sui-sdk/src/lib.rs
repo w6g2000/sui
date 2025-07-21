@@ -181,6 +181,11 @@ impl SuiClientBuilder {
         self
     }
 
+    pub fn ipc_pool_size(mut self, pool_size: usize) -> Self {
+        self.ipc_pool_size = pool_size;
+        self
+    }
+
     /// Set the max concurrent requests allowed
     pub fn max_concurrent_requests(mut self, max_concurrent_requests: usize) -> Self {
         self.max_concurrent_requests = Some(max_concurrent_requests);
