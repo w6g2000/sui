@@ -3176,7 +3176,7 @@ impl AuthorityState {
         name: AuthorityName,
         secret: StableSyncAuthoritySigner,
         supported_protocol_versions: SupportedProtocolVersions,
-        pub store: Arc<AuthorityStore>,
+        store: Arc<AuthorityStore>,
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
         epoch_store: Arc<AuthorityPerEpochStore>,
         committee_store: Arc<CommitteeStore>,
