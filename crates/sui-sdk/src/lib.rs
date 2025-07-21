@@ -150,7 +150,7 @@ pub struct SuiClientBuilder {
     ws_ping_interval: Option<Duration>,
     basic_auth: Option<(String, String)>,
     headers: Option<HashMap<String, String>>,
-    ipc_path: Option<String>,
+    pub ipc_path: Option<String>,
     ipc_pool_size: usize,
 }
 

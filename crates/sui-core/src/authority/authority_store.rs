@@ -111,9 +111,9 @@ pub struct AuthorityStore {
     /// Internal vector of locks to manage concurrent writes to the database
     mutex_table: MutexTable<ObjectDigest>,
 
-    pub(crate) perpetual_tables: Arc<AuthorityPerpetualTables>,
+    pub perpetual_tables: Arc<AuthorityPerpetualTables>,
 
-    pub(crate) root_state_notify_read:
+    pub root_state_notify_read:
         NotifyRead<EpochId, (CheckpointSequenceNumber, GlobalStateHash)>,
 
     /// Whether to enable expensive SUI conservation check at epoch boundaries.
@@ -575,7 +575,7 @@ impl AuthorityStore {
 
     /// Insert a genesis object.
     /// TODO: delete this method entirely (still used by authority_tests.rs)
-    pub(crate) fn insert_genesis_object(&self, object: Object) -> SuiResult {
+    pub fn insert_genesis_object(&self, object: Object) -> SuiResult {
         // We only side load objects with a genesis parent transaction.
         debug_assert!(object.previous_transaction == TransactionDigest::genesis_marker());
         let object_ref = object.compute_object_reference();
@@ -610,7 +610,7 @@ impl AuthorityStore {
 
     /// This function should only be used for initializing genesis and should remain private.
     #[instrument(level = "debug", skip_all)]
-    pub(crate) fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SuiResult<()> {
+    pub fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SuiResult<()> {
         let mut batch = self.perpetual_tables.objects.batch();
         let ref_and_objects: Vec<_> = objects
             .iter()
@@ -825,7 +825,7 @@ impl AuthorityStore {
 
     /// Commits transactions only (not effects or other transaction outputs) to the db.
     /// See ExecutionCache::persist_transaction for more info
-    pub(crate) fn persist_transaction(&self, tx: &VerifiedExecutableTransaction) -> SuiResult {
+    pub fn persist_transaction(&self, tx: &VerifiedExecutableTransaction) -> SuiResult {
         let mut batch = self.perpetual_tables.transactions.batch();
         batch.insert_batch(
             &self.perpetual_tables.transactions,
@@ -921,7 +921,7 @@ impl AuthorityStore {
 
     /// Gets ObjectLockInfo that represents state of lock on an object.
     /// Returns UserInputError::ObjectNotFound if cannot find lock record for this object
-    pub(crate) fn get_lock(
+    pub fn get_lock(
         &self,
         obj_ref: ObjectRef,
         epoch_store: &AuthorityPerEpochStore,
@@ -953,7 +953,7 @@ impl AuthorityStore {
     }
 
     /// Returns UserInputError::ObjectNotFound if no lock records found for this object.
-    pub(crate) fn get_latest_live_version_for_object_id(
+    pub fn get_latest_live_version_for_object_id(
         &self,
         object_id: ObjectID,
     ) -> SuiResult<ObjectRef> {
@@ -1075,7 +1075,7 @@ impl AuthorityStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn reset_locks_for_test(
+    pub fn reset_locks_for_test(
         &self,
         transactions: &[TransactionDigest],
         objects: &[ObjectRef],
