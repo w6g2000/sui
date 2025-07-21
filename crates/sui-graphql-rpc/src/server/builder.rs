@@ -32,7 +32,6 @@ use crate::{
     types::query::{Query, SuiGraphQLSchema},
 };
 use async_graphql::extensions::ApolloTracing;
-use async_graphql::extensions::Tracing;
 use async_graphql::EmptySubscription;
 use async_graphql::{extensions::ExtensionFactory, Schema, SchemaBuilder};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
@@ -492,10 +491,6 @@ impl ServerBuilder {
 
         if config.internal_features.query_timeout {
             builder = builder.extension(Timeout);
-        }
-
-        if config.internal_features.tracing {
-            builder = builder.extension(Tracing);
         }
 
         if config.internal_features.apollo_tracing {
