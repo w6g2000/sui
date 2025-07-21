@@ -247,7 +247,7 @@ pub mod test_authority_builder;
 pub mod transaction_deferral;
 mod weighted_moving_average;
 
-pub(crate) mod authority_store;
+pub mod authority_store;
 pub mod backpressure;
 
 /// Prometheus metrics which can be displayed in Grafana, queried and alerted on
@@ -3176,7 +3176,7 @@ impl AuthorityState {
         name: AuthorityName,
         secret: StableSyncAuthoritySigner,
         supported_protocol_versions: SupportedProtocolVersions,
-        store: Arc<AuthorityStore>,
+        pub store: Arc<AuthorityStore>,
         execution_cache_trait_pointers: ExecutionCacheTraitPointers,
         epoch_store: Arc<AuthorityPerEpochStore>,
         committee_store: Arc<CommitteeStore>,

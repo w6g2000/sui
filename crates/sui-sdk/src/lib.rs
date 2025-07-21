@@ -176,6 +176,11 @@ impl SuiClientBuilder {
         self
     }
 
+    pub fn ipc_path(mut self, path: impl AsRef<str>) -> Self {
+        self.ipc_path = Some(path.as_ref().to_string());
+        self
+    }
+
     /// Set the max concurrent requests allowed
     pub fn max_concurrent_requests(mut self, max_concurrent_requests: usize) -> Self {
         self.max_concurrent_requests = Some(max_concurrent_requests);
