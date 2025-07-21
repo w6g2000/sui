@@ -7,7 +7,7 @@ pub mod executor;
 pub mod programmable_transaction_gen;
 pub mod transaction_data_gen;
 pub mod type_arg_fuzzer;
-
+use rand::Rng;
 use executor::Executor;
 use proptest::collection::vec;
 use proptest::test_runner::TestRunner;
