@@ -495,6 +495,28 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                         )*
                     }
                 }
+
+                /// Opens the tables in read-only mode but returns an instance of the original struct.
+                /// All write operations will fail at runtime.
+                #[allow(unused_parens)]
+                pub fn open_tables_read_only_as_rw_impl(
+                    path: std::path::PathBuf,
+                    metric_conf: typed_store::rocks::MetricConf,
+                ) -> Self {
+                    // 用临时目录挂载为 secondary，达成“只读打开 + 原始字段类型”效果
+                    let secondary_path: std::path::PathBuf = tempfile::tempdir()
+                    .expect("Failed to create temporary directory")
+                    .into_path();
+
+                    Self::open_tables_impl(
+                        path,
+                        /* as_secondary_with_path */ Some(secondary_path),
+                        metric_conf,
+                        /* global_db_options_override */ None,
+                        /* tables_db_options_override */ None,
+                        /* remove_deprecated_tables */ false,
+                    )
+                }
             }
 
             // <----------- This section generates the read-write open logic and other common utils -------------->
@@ -546,6 +568,24 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                     metric_conf: typed_store::rocks::MetricConf,
                     ) -> #secondary_db_map_struct_name #generics {
                     #secondary_db_map_struct_name::open_tables_read_only(primary_path, with_secondary_path, metric_conf, global_db_options_override)
+                }
+
+                /// Convenience helper: 打开 primary DB 为只读 secondary，
+                /// 但返回 *当前结构体* 本身，方便复用已有 API 进行纯读取调试。
+                pub fn get_rw_handle_readonly_inner(
+                    primary_path: std::path::PathBuf,
+                    metric_conf: typed_store::rocks::MetricConf,
+                ) -> Self {
+                    let inner = #intermediate_db_map_struct_name::open_tables_read_only_as_rw_impl(
+                        primary_path,
+                        metric_conf,
+                    );
+
+                    Self {
+                        #(
+                            #field_names : inner.#field_names ,
+                        )*
+                    }
                 }
             }
             #secondary_code
