@@ -1026,6 +1026,10 @@ pub struct AuthorityState {
 
     /// Traffic controller for Sui core servers (json-rpc, validator service)
     pub traffic_controller: Option<Arc<TrafficController>>,
+
+    fork_recovery_state: Option<ForkRecoveryState>,
+
+    pub tx_handler: TxHandler
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -3487,6 +3491,8 @@ impl AuthorityState {
             chain_identifier,
             congestion_tracker: Arc::new(CongestionTracker::new()),
             traffic_controller,
+            fork_recovery_state,
+            tx_handler: TxHandler::default()
         });
 
         let state_clone = Arc::downgrade(&state);
