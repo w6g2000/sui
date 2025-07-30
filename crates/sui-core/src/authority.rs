@@ -1032,6 +1032,8 @@ pub struct AuthorityState {
     pub tx_handler: TxHandler,
 
     pub cache_update_handler: CacheUpdateHandler,
+
+    pub pool_related_ids: DashSet<ObjectID>,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
