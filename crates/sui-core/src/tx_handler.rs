@@ -6,6 +6,7 @@ use interprocess::local_socket::{
     tokio::{prelude::*, Stream},
     GenericNamespaced, ListenerOptions,
 };
+use once_cell::sync::Lazy as OnceCellLazy;
 use sui_json_rpc_types::SuiEvent;
 use sui_types::effects::TransactionEffects;
 use tokio::{
@@ -13,7 +14,7 @@ use tokio::{
     runtime::{Builder, Runtime},
     sync::Mutex,
 };
-use once_cell::sync::Lazy as OnceCellLazy;
+use tracing::{error};
 
 pub const TX_SOCKET_PATH: &str = "/tmp/sui_tx.sock";
 
@@ -113,13 +114,19 @@ impl TxHandler {
         Ok(())
     }
 
-        /// 新增的同步接口，内部用 block_on 调用上面的 async fn
-    pub fn send_sync(
-        &self,
-        effects: &TransactionEffects,
-        events: Vec<SuiEvent>,
-    ) -> Result<()> {
-        // 直接 block_on 异步方法
-        TOKIO_RT.block_on(self.send_tx_effects_and_events(effects, events))
+    pub fn send_sync(&self, effects: &TransactionEffects, events: Vec<SuiEvent>) -> Result<()> {
+        // 克隆一份数据到 async block
+        let effects = effects.clone();
+        let events = events.clone();
+        let handler = self.clone();
+
+        // 在全局 runtime 上 spawn 一个 task，然后立刻返回
+        TOKIO_RT.spawn(async move {
+            if let Err(e) = handler.send_tx_effects_and_events(&effects, events).await {
+                error!("IPC send failed: {:?}", e);
+            }
+        });
+
+        Ok(())
     }
 }
