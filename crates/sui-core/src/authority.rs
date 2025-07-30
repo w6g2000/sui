@@ -1029,7 +1029,9 @@ pub struct AuthorityState {
 
     fork_recovery_state: Option<ForkRecoveryState>,
 
-    pub tx_handler: TxHandler
+    pub tx_handler: TxHandler,
+
+    pub cache_update_handler: CacheUpdateHandler,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -3492,7 +3494,9 @@ impl AuthorityState {
             congestion_tracker: Arc::new(CongestionTracker::new()),
             traffic_controller,
             fork_recovery_state,
-            tx_handler: TxHandler::default()
+            tx_handler: TxHandler::default(),
+            cache_update_handler: CacheUpdateHandler::new(),
+            pool_related_ids: pool_related_object_ids(),
         });
 
         let state_clone = Arc::downgrade(&state);
