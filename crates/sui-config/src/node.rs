@@ -215,6 +215,11 @@ pub struct NodeConfig {
     /// Fork recovery configuration for handling validator equivocation after forks
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_recovery: Option<ForkRecoveryConfig>,
+
+    /// MEV (Maximum Extractable Value) 配置选项
+    /// 控制是否启用MEV功能，包括交易事件推送和缓存更新推送
+    #[serde(default = "default_disable_mev")]
+    pub enable_mev: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
@@ -725,6 +730,11 @@ pub fn default_end_of_epoch_broadcast_channel_capacity() -> usize {
 
 pub fn bool_true() -> bool {
     true
+}
+
+/// MEV功能默认禁用，避免意外的内存泄漏
+fn default_disable_mev() -> bool {
+    false
 }
 
 fn is_true(value: &bool) -> bool {

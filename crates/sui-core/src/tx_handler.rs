@@ -114,7 +114,27 @@ impl TxHandler {
         Ok(())
     }
 
+    /// 检查是否有活跃的MEV客户端连接
+    pub async fn has_active_connections(&self) -> bool {
+        let conns = self.conns.lock().await;
+        !conns.is_empty()
+    }
+
+    /// 同步检查连接状态（非阻塞）
+    pub fn has_connections_sync(&self) -> bool {
+        // 使用try_lock避免阻塞，如果锁被占用则假设有连接
+        match self.conns.try_lock() {
+            Ok(conns) => !conns.is_empty(),
+            Err(_) => true, // 锁被占用，保守地假设有连接
+        }
+    }
+
     pub fn send_sync(&self, effects: &TransactionEffects, events: Vec<SuiEvent>) -> Result<()> {
+        // 🚨 关键优化：只有在有MEV客户端连接时才发送数据
+        if !self.has_connections_sync() {
+            return Ok(()); // 没有连接，直接返回，避免内存堆积
+        }
+
         // 克隆一份数据到 async block
         let effects = effects.clone();
         let events = events.clone();
