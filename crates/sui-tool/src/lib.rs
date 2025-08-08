@@ -1067,13 +1067,70 @@ pub async fn download_db_snapshot(
                 async move {
                     counter_cloned.fetch_add(1, Ordering::Relaxed);
                     let file_path = get_path(format!("epoch_{}/{}", epoch, file).as_str());
-                    copy_with_retry(
-                        file_path.clone(),
-                        remote_store.clone(),
-                        local_store.clone(),
-                        6, // 尝试 6 次，回退总时长 ~6-7 秒
-                    )
-                    .await?;
+
+                    if local_store.head(&file_path).await.is_ok() {
+                        // 这里的 head() 成功意味着“最终文件”已经原子落盘过，
+                        // 不是半截 .part，因此安全跳过
+                        return Ok::<::object_store::path::Path, anyhow::Error>(file_path.clone());
+                    }
+
+                    // Timeout + retry for transient R2/public-bucket issues
+                    let max_attempts: usize = 6;
+                    let mut attempt: usize = 0;
+                    let mut backoff_ms: u64 = 200;
+                    loop {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(240),
+                            copy_file(&file_path, &file_path, &remote_store, &local_store),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => break,
+                            Ok(Err(e)) => {
+                                let es = e.to_string();
+                                let transient = es.contains("Failed to get header")
+                                    || es.contains("Missing last modified")
+                                    || es.contains("429")
+                                    || es.contains("timed out")
+                                    || es.contains("deadline")
+                                    || es.contains("connection")
+                                    || es.contains("timeout");
+                                attempt += 1;
+                                if !transient || attempt >= max_attempts {
+                                    return Err(e);
+                                }
+                                tracing::warn!(
+                                    "retrying {} (attempt {}): {}",
+                                    file_path,
+                                    attempt,
+                                    es
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                                    .await;
+                                if backoff_ms < 5000 {
+                                    backoff_ms = (backoff_ms * 2).min(5000);
+                                }
+                                continue;
+                            }
+                            Err(_elapsed) => {
+                                attempt += 1;
+                                if attempt >= max_attempts {
+                                    return Err(anyhow::anyhow!("timeout"));
+                                }
+                                tracing::warn!(
+                                    "timeout when downloading {}, attempt {}",
+                                    file_path,
+                                    attempt
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
+                                    .await;
+                                if backoff_ms < 5000 {
+                                    backoff_ms = (backoff_ms * 2).min(5000);
+                                }
+                                continue;
+                            }
+                        }
+                    }
                     Ok::<::object_store::path::Path, anyhow::Error>(file_path.clone())
                 }
             })
