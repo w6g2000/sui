@@ -5,7 +5,6 @@
 use bcs;
 use fastcrypto::traits::KeyPair;
 use futures::{stream::FuturesUnordered, StreamExt};
-use insta::assert_snapshot;
 use move_binary_format::{
     file_format::{self, AddressIdentifierIndex, IdentifierIndex, ModuleHandle},
     file_format_common::BinaryConstants,

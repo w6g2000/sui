@@ -1,30 +1,86 @@
 use std::{fs, sync::Arc};
 
 use anyhow::Result;
-use futures::future::Lazy;
 use interprocess::local_socket::{
     tokio::{prelude::*, Stream},
     GenericNamespaced, ListenerOptions,
 };
 use once_cell::sync::Lazy as OnceCellLazy;
+use serde::{Deserialize, Serialize};
 use sui_json_rpc_types::SuiEvent;
-use sui_types::effects::TransactionEffects;
+use sui_types::{
+    accumulator_event::AccumulatorEvent,
+    base_types::{EpochId, ObjectID},
+    digests::TransactionDigest,
+    effects::{TransactionEffects, TransactionEvents},
+    object::Object,
+    storage::{FullObjectKey, MarkerValue, ObjectKey},
+};
+
 use tokio::{
     io::AsyncWriteExt,
     runtime::{Builder, Runtime},
     sync::Mutex,
 };
-use tracing::{error};
+use tracing::error;
+
+use crate::transaction_outputs::TransactionOutputs;
 
 pub const TX_SOCKET_PATH: &str = "/tmp/sui_tx.sock";
 
-// 全局复用一个多线程 Runtime
+// 全局复用一个多线程 Runtime（用于发送任务）
 static TOKIO_RT: OnceCellLazy<Runtime> = OnceCellLazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
+    Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("create Tokio runtime")
 });
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TxOutMsg {
+    pub outputs: TxOutputsWire,    // 只放可序列化的 wire 版
+    pub sui_events: Vec<SuiEvent>, // 需要的话也一起发
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TxOutputsWire {
+    pub epoch: u64, // 传过来写缓存需要的 epoch
+    pub tx_digest: TransactionDigest,
+
+    pub effects: TransactionEffects,
+    pub events: TransactionEvents,
+    pub accumulator_events: Vec<AccumulatorEvent>, // 无锁版本
+
+    pub markers: Vec<(FullObjectKey, MarkerValue)>,
+    pub wrapped: Vec<ObjectKey>,
+    pub deleted: Vec<ObjectKey>,
+    pub written: Vec<(ObjectID, Object)>,
+}
+
+impl TxOutputsWire {
+    pub fn from_outputs(epoch: u64, o: &TransactionOutputs) -> Self {
+        let tx_digest = *o.transaction.digest();
+        let written = o
+            .written
+            .iter()
+            .map(|(id, obj)| (*id, obj.clone()))
+            .collect();
+
+        // 如果你不想动原来的 accumulator_events，可以 clone：
+        let acc = o.accumulator_events.lock().clone();
+
+        Self {
+            epoch,
+            tx_digest,
+            effects: o.effects.clone(),
+            events: o.events.clone(),
+            accumulator_events: acc,
+            markers: o.markers.clone(),
+            wrapped: o.wrapped.clone(),
+            deleted: o.deleted.clone(),
+            written,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct TxHandler {
@@ -46,6 +102,7 @@ impl Drop for TxHandler {
 
 impl TxHandler {
     pub fn new(path: &str) -> Self {
+        // 清理残留的 socket 文件
         let _ = fs::remove_file(path);
 
         let name = path
@@ -53,19 +110,17 @@ impl TxHandler {
             .expect("Invalid tx socket path");
         let opts = ListenerOptions::new().name(name);
         let listener = opts.create_tokio().expect("Failed to bind tx socket");
+
         let conns = Arc::new(Mutex::new(vec![]));
         let conns_clone = conns.clone();
 
+        // 注意：这里用当前运行时的 tokio::spawn；确保在 Tokio runtime 内调用 new()
         tokio::spawn(async move {
             loop {
-                let conn = match listener.accept().await {
-                    Ok(c) => c,
-                    _err => {
-                        continue;
-                    }
-                };
-
-                conns_clone.lock().await.push(conn);
+                match listener.accept().await {
+                    Ok(conn) => conns_clone.lock().await.push(conn),
+                    Err(_e) => continue,
+                }
             }
         });
 
@@ -75,58 +130,54 @@ impl TxHandler {
         }
     }
 
-    pub async fn send_tx_effects_and_events(
-        &self,
-        effects: &TransactionEffects,
-        events: Vec<SuiEvent>,
-    ) -> Result<()> {
-        // Serialize effects and events separately
-        let effects_bytes = bincode::serialize(effects)?;
-        let events_bytes = serde_json::to_vec(&events)?;
-
-        // Get lengths as BE bytes
-        let effects_len_bytes = (effects_bytes.len() as u32).to_be_bytes();
-        let events_len_bytes = (events_bytes.len() as u32).to_be_bytes();
+    /// 发送一条长度前缀的 bincode 消息；失败的连接会被剔除
+    pub async fn send_msg(&self, msg: &TxOutMsg) -> Result<()> {
+        let payload = bincode::serialize(msg)?;
+        let len = (payload.len() as u32).to_be_bytes();
 
         let mut conns = self.conns.lock().await;
-        let mut active_conns = Vec::new();
+        let mut alive = Vec::with_capacity(conns.len());
 
         while let Some(mut conn) = conns.pop() {
-            let result: Result<()> = async {
-                // Write effects length and data
-                conn.write_all(&effects_len_bytes).await?;
-                conn.write_all(&effects_bytes).await?;
-
-                // Write events length and data
-                conn.write_all(&events_len_bytes).await?;
-                conn.write_all(&events_bytes).await?;
+            let res: Result<()> = async {
+                conn.write_all(&len).await?;
+                conn.write_all(&payload).await?;
                 Ok(())
             }
             .await;
 
-            if result.is_ok() {
-                active_conns.push(conn);
+            if res.is_ok() {
+                alive.push(conn);
             }
         }
 
-        *conns = active_conns;
-
+        *conns = alive;
         Ok(())
     }
 
-    pub fn send_sync(&self, effects: &TransactionEffects, events: Vec<SuiEvent>) -> Result<()> {
-        // 克隆一份数据到 async block
-        let effects = effects.clone();
-        let events = events.clone();
+    /// 异步发送（不阻塞调用方）
+    pub fn send_sync_msg(&self, msg: TxOutMsg) -> Result<()> {
         let handler = self.clone();
-
-        // 在全局 runtime 上 spawn 一个 task，然后立刻返回
         TOKIO_RT.spawn(async move {
-            if let Err(e) = handler.send_tx_effects_and_events(&effects, events).await {
+            if let Err(e) = handler.send_msg(&msg).await {
                 error!("IPC send failed: {:?}", e);
             }
         });
-
         Ok(())
+    }
+
+    /// 便捷函数：从 `TransactionOutputs` 构造 wire 数据并异步发送
+    pub fn send_sync(
+        &self,
+        epoch: EpochId,
+        outputs: &TransactionOutputs, // ← 按引用
+        sui_events: Vec<SuiEvent>,
+    ) -> Result<()> {
+        let wire = TxOutputsWire::from_outputs(epoch as u64, outputs);
+        let msg = TxOutMsg {
+            outputs: wire,
+            sui_events,
+        };
+        self.send_sync_msg(msg)
     }
 }

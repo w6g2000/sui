@@ -2,9 +2,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::cache_update_handler::pool_related_object_ids;
 use crate::checkpoints::CheckpointBuilderError;
 use crate::checkpoints::CheckpointBuilderResult;
-use crate::cache_update_handler::pool_related_object_ids;
 use crate::congestion_tracker::CongestionTracker;
 use crate::consensus_adapter::ConsensusOverloadChecker;
 use crate::execution_cache::ExecutionCacheTraitPointers;
@@ -22,6 +22,7 @@ use crate::verify_indexes::{fix_indexes, verify_indexes};
 use arc_swap::{ArcSwap, Guard};
 use async_trait::async_trait;
 use authority_per_epoch_store::CertLockGuard;
+use dashmap::DashSet;
 use fastcrypto::encoding::Base58;
 use fastcrypto::encoding::Encoding;
 use fastcrypto::hash::MultisetHash;
@@ -60,7 +61,6 @@ use std::{
     sync::Arc,
     vec,
 };
-use dashmap::DashSet;
 use sui_config::node::{AuthorityOverloadConfig, StateDebugDumpConfig};
 use sui_config::NodeConfig;
 use sui_protocol_config::PerObjectCongestionControlMode;
@@ -191,12 +191,12 @@ pub use crate::checkpoints::checkpoint_executor::utils::{
 
 use crate::authority::authority_store_tables::AuthorityPrunerTables;
 use crate::authority_client::NetworkAuthorityClient;
+use crate::cache_update_handler::CacheUpdateHandler;
 use crate::validator_tx_finalizer::ValidatorTxFinalizer;
 #[cfg(msim)]
 use sui_types::committee::CommitteeTrait;
 use sui_types::deny_list_v2::check_coin_deny_list_v2_during_signing;
 use sui_types::execution_config_utils::to_binary_config;
-use crate::cache_update_handler::CacheUpdateHandler;
 
 #[cfg(test)]
 #[path = "unit_tests/authority_tests.rs"]
@@ -2159,9 +2159,8 @@ impl AuthorityState {
             && !sui_events.is_empty()
             && !transaction_outputs.written.is_empty()
         {
-            let _ = self
-                .tx_handler
-                .send_sync(&transaction_outputs.effects, sui_events);
+            let _ =
+                self.tx_handler.send_sync(epoch_store.epoch(), &transaction_outputs, sui_events);
         }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
