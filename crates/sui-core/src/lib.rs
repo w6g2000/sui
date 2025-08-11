@@ -46,7 +46,7 @@ pub mod traffic_controller;
 pub mod transaction_driver;
 mod transaction_input_loader;
 pub mod transaction_orchestrator;
-mod transaction_outputs;
+pub mod transaction_outputs;
 pub mod validator_tx_finalizer;
 pub mod verify_indexes;
 
@@ -88,4 +88,4 @@ pub mod signature_verifier;
 pub mod runtime;
 mod transaction_signing_filter;
 mod cache_update_handler;
-mod tx_handler;
+pub mod tx_handler;
