@@ -14,7 +14,7 @@ use sui_types::{
     digests::TransactionDigest,
     effects::{TransactionEffects, TransactionEvents},
     object::Object,
-    storage::{FullObjectKey, MarkerValue, ObjectKey},
+    storage::{FullObjectKey, MarkerValue, ObjectKey}, transaction::SenderSignedData,
 };
 
 use tokio::{
@@ -41,18 +41,19 @@ pub struct TxOutMsg {
     pub sui_events: Vec<SuiEvent>, // 需要的话也一起发
 }
 
+/// 可序列化的 TransactionOutputs（wire 版）
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutputsWire {
-    pub epoch: u64, // 传过来写缓存需要的 epoch
+    pub epoch: u64,
     pub tx_digest: TransactionDigest,
-
+    pub sender_data: SenderSignedData,
     pub effects: TransactionEffects,
     pub events: TransactionEvents,
-    pub accumulator_events: Vec<AccumulatorEvent>, // 无锁版本
-
+    pub accumulator_events: Vec<AccumulatorEvent>,
     pub markers: Vec<(FullObjectKey, MarkerValue)>,
     pub wrapped: Vec<ObjectKey>,
     pub deleted: Vec<ObjectKey>,
+
     pub written: Vec<(ObjectID, Object)>,
 }
 
@@ -64,13 +65,14 @@ impl TxOutputsWire {
             .iter()
             .map(|(id, obj)| (*id, obj.clone()))
             .collect();
-
-        // 如果你不想动原来的 accumulator_events，可以 clone：
         let acc = o.accumulator_events.lock().clone();
+
+        let sender_data = o.transaction.data().clone();
 
         Self {
             epoch,
             tx_digest,
+            sender_data,
             effects: o.effects.clone(),
             events: o.events.clone(),
             accumulator_events: acc,
@@ -112,7 +114,7 @@ impl TxHandler {
         let listener = opts.create_tokio().expect("Failed to bind tx socket");
 
         let conns = Arc::new(Mutex::new(vec![]));
-        let conns_clone = conns.clone();
+        let conns_clone: Arc<Mutex<Vec<LocalSocketStream>>> = conns.clone();
 
         // 注意：这里用当前运行时的 tokio::spawn；确保在 Tokio runtime 内调用 new()
         tokio::spawn(async move {
