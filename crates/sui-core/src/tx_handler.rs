@@ -37,8 +37,8 @@ static TOKIO_RT: OnceCellLazy<Runtime> = OnceCellLazy::new(|| {
 });
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutMsg {
-    pub outputs: TxOutputsWire,    // 只放可序列化的 wire 版
-    pub sui_events_json: Vec<u8>, // 需要的话也一起发
+    pub outputs: TxOutputsWire,
+    pub sui_events_json: Vec<u8>,
 }
 
 /// 可序列化的 TransactionOutputs（wire 版）
