@@ -8,14 +8,7 @@ use interprocess::local_socket::{
 use once_cell::sync::Lazy as OnceCellLazy;
 use serde::{Deserialize, Serialize};
 use sui_json_rpc_types::SuiEvent;
-use sui_types::{
-    accumulator_event::AccumulatorEvent,
-    base_types::{EpochId, ObjectID},
-    digests::TransactionDigest,
-    effects::{TransactionEffects, TransactionEvents},
-    object::Object,
-    storage::{FullObjectKey, MarkerValue, ObjectKey}, transaction::SenderSignedData,
-};
+use sui_types::effects::TransactionEffects;
 
 use tokio::{
     io::AsyncWriteExt,
@@ -23,8 +16,6 @@ use tokio::{
     sync::Mutex,
 };
 use tracing::error;
-
-use crate::transaction_outputs::TransactionOutputs;
 
 pub const TX_SOCKET_PATH: &str = "/tmp/sui_tx.sock";
 
@@ -35,9 +26,13 @@ static TOKIO_RT: OnceCellLazy<Runtime> = OnceCellLazy::new(|| {
         .build()
         .expect("create Tokio runtime")
 });
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutMsg {
+    /// events 仍然用 JSON 字节
     pub sui_events_json: Vec<u8>,
+    /// effects 用 BCS 字节，稳定而且更小
+    pub effect_bcs: Vec<u8>,
 }
 
 #[derive(Clone)]
@@ -70,9 +65,9 @@ impl TxHandler {
         let listener = opts.create_tokio().expect("Failed to bind tx socket");
 
         let conns = Arc::new(Mutex::new(vec![]));
-        let conns_clone: Arc<Mutex<Vec<LocalSocketStream>>> = conns.clone();
+        let conns_clone = conns.clone();
 
-        // 注意：这里用当前运行时的 tokio::spawn；确保在 Tokio runtime 内调用 new()
+        // 用当前运行时的 tokio::spawn；确保在 Tokio runtime 内调用 new()
         tokio::spawn(async move {
             loop {
                 match listener.accept().await {
@@ -128,9 +123,11 @@ impl TxHandler {
     pub fn send_sync(
         &self,
         sui_events: Vec<SuiEvent>,
+        effect: TransactionEffects,
     ) -> Result<()> {
         let msg = TxOutMsg {
             sui_events_json: serde_json::to_vec(&sui_events)?,
+            effect_bcs: bcs::to_bytes(&effect)?, // 关键：effects -> BCS bytes
         };
         self.send_sync_msg(msg)
     }

@@ -2157,9 +2157,8 @@ impl AuthorityState {
 
         if !certificate.transaction_data().is_system_tx()
             && !sui_events.is_empty()
-            && !transaction_outputs.written.is_empty()
         {
-            let _ = self.tx_handler.send_sync(sui_events);
+            let _ = self.tx_handler.send_sync(sui_events, transaction_outputs.effects.clone());
         }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
