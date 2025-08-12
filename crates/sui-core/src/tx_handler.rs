@@ -37,51 +37,7 @@ static TOKIO_RT: OnceCellLazy<Runtime> = OnceCellLazy::new(|| {
 });
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TxOutMsg {
-    pub outputs: TxOutputsWire,
     pub sui_events_json: Vec<u8>,
-}
-
-/// 可序列化的 TransactionOutputs（wire 版）
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TxOutputsWire {
-    pub epoch: u64,
-    pub tx_digest: TransactionDigest,
-    pub sender_data: SenderSignedData,
-    pub effects: TransactionEffects,
-    pub events: TransactionEvents,
-    pub accumulator_events: Vec<AccumulatorEvent>,
-    pub markers: Vec<(FullObjectKey, MarkerValue)>,
-    pub wrapped: Vec<ObjectKey>,
-    pub deleted: Vec<ObjectKey>,
-
-    pub written: Vec<(ObjectID, Object)>,
-}
-
-impl TxOutputsWire {
-    pub fn from_outputs(epoch: u64, o: &TransactionOutputs) -> Self {
-        let tx_digest = *o.transaction.digest();
-        let written = o
-            .written
-            .iter()
-            .map(|(id, obj)| (*id, obj.clone()))
-            .collect();
-        let acc = o.accumulator_events.lock().clone();
-
-        let sender_data = o.transaction.data().clone();
-
-        Self {
-            epoch,
-            tx_digest,
-            sender_data,
-            effects: o.effects.clone(),
-            events: o.events.clone(),
-            accumulator_events: acc,
-            markers: o.markers.clone(),
-            wrapped: o.wrapped.clone(),
-            deleted: o.deleted.clone(),
-            written,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -171,13 +127,9 @@ impl TxHandler {
     /// 便捷函数：从 `TransactionOutputs` 构造 wire 数据并异步发送
     pub fn send_sync(
         &self,
-        epoch: EpochId,
-        outputs: &TransactionOutputs, // ← 按引用
         sui_events: Vec<SuiEvent>,
     ) -> Result<()> {
-        let wire = TxOutputsWire::from_outputs(epoch as u64, outputs);
         let msg = TxOutMsg {
-            outputs: wire,
             sui_events_json: serde_json::to_vec(&sui_events)?,
         };
         self.send_sync_msg(msg)

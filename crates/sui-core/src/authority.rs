@@ -2159,8 +2159,7 @@ impl AuthorityState {
             && !sui_events.is_empty()
             && !transaction_outputs.written.is_empty()
         {
-            let _ =
-                self.tx_handler.send_sync(epoch_store.epoch(), &transaction_outputs, sui_events);
+            let _ = self.tx_handler.send_sync(sui_events);
         }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
