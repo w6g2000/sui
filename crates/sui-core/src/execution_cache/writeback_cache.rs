@@ -990,6 +990,119 @@ impl WritebackCache {
         self.set_backpressure(pending_count);
     }
 
+    /// 内存专用版：同步更新缓存，不触发任何落盘相关的副作用。
+    /// - 维持与 `write_transaction_outputs` 相同的可见性与顺序语义
+    /// - 不写 DB，不更新 backpressure，不增加 pending 计数
+    /// - 直接把 tx/effects/events/执行摘要写入 committed 缓存，读路径可立即看到
+    /// - 可选：把对象版本从 dirty 移到 committed（仅内存移动），用于限制内存
+    /// 若永远不落盘：那就用 finalize_to_committed_cache = true。
+    /// 这样 dirty 不会无限长，内存能控，而且负面缓存/版本界查询都还能保持正确语义。
+    #[instrument(level = "debug", skip_all)]
+    pub fn write_transaction_outputs_memonly(
+        &self,
+        epoch_id: EpochId,
+        tx_outputs: Arc<TransactionOutputs>,
+        finalize_to_committed_cache: bool,
+    ) {
+        let tx_digest = *tx_outputs.transaction.digest();
+        trace!(
+            ?tx_digest,
+            "writing transaction outputs to cache (mem-only)"
+        );
+
+        // 避免残留 fastpath 副本
+        self.dirty.fastpath_transaction_outputs.remove(&tx_digest);
+
+        let TransactionOutputs {
+            transaction,
+            effects,
+            markers,
+            written,
+            deleted,
+            wrapped,
+            events,
+            ..
+        } = &*tx_outputs;
+
+        // 1) tombstone 先写：删除与包裹
+        for ObjectKey(id, version) in deleted.iter() {
+            self.write_object_entry(id, *version, ObjectEntry::Deleted);
+        }
+        for ObjectKey(id, version) in wrapped.iter() {
+            self.write_object_entry(id, *version, ObjectEntry::Wrapped);
+        }
+
+        // 2) markers
+        for (object_key, marker_value) in markers.iter() {
+            self.write_marker_value(epoch_id, *object_key, *marker_value);
+        }
+
+        // 3) 先子后父：确保读到父时，子已可见
+        for (object_id, object) in written.iter() {
+            if object.is_child_object() {
+                self.write_object_entry(object_id, object.version(), object.clone().into());
+            }
+        }
+        for (object_id, object) in written.iter() {
+            if !object.is_child_object() {
+                self.write_object_entry(object_id, object.version(), object.clone().into());
+                if object.is_package() {
+                    // 包对象也放进包缓存，便于后续加载依赖
+                    self.packages
+                        .insert(*object_id, PackageObject::new(object.clone()));
+                }
+            }
+        }
+
+        // 4) 让 tx / effects / events / 执行摘要立刻可读（走 committed 缓存，不走 dirty.*）
+        let effects_digest = effects.digest();
+        self.cached
+            .transactions
+            .insert(
+                &tx_digest,
+                PointCacheItem::Some(transaction.clone()),
+                Ticket::Write,
+            )
+            .ok();
+        self.cached
+            .transaction_effects
+            .insert(
+                &effects_digest,
+                PointCacheItem::Some(effects.clone().into()),
+                Ticket::Write,
+            )
+            .ok();
+        self.cached
+            .transaction_events
+            .insert(
+                &tx_digest,
+                PointCacheItem::Some(events.clone().into()),
+                Ticket::Write,
+            )
+            .ok();
+        self.cached
+            .executed_effects_digests
+            .insert(
+                &tx_digest,
+                PointCacheItem::Some(effects_digest),
+                Ticket::Write,
+            )
+            .ok();
+
+        // 5) 唤醒等待 executed_effects_digest 的读者
+        self.executed_effects_digests_notify_read
+            .notify(&tx_digest, &effects_digest);
+        self.metrics
+            .pending_notify_read
+            .set(self.executed_effects_digests_notify_read.num_pending() as i64);
+
+        // 6) （可选）仅内存“完成”：把对象/marker 版本从 dirty 移到 committed
+        //    ——保持无间隙版本序列 + 限制内存；不触发任何 DB 行为
+        if finalize_to_committed_cache {
+            self.flush_transactions_from_dirty_to_cached(epoch_id, tx_digest, &tx_outputs);
+        }
+    }
+
     fn build_db_batch(&self, epoch: EpochId, digests: &[TransactionDigest]) -> Batch {
         let _metrics_guard = mysten_metrics::monitored_scope("WritebackCache::build_db_batch");
         let mut all_outputs = Vec::with_capacity(digests.len());
