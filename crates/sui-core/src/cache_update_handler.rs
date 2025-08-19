@@ -75,26 +75,7 @@ impl CacheUpdateHandler {
         }
     }
 
-    /// 检查是否有活跃的MEV客户端连接
-    pub async fn has_active_connections(&self) -> bool {
-        let connections = self.connections.lock().await;
-        !connections.is_empty()
-    }
-
-    /// 同步检查连接状态（非阻塞）
-    pub fn has_connections_sync(&self) -> bool {
-        match self.connections.try_lock() {
-            Ok(connections) => !connections.is_empty(),
-            Err(_) => true, // 锁被占用，保守地假设有连接
-        }
-    }
-
     pub async fn notify_written(&self, objects: Vec<(ObjectID, Object)>) {
-        // 🚨 关键优化：只有在有MEV客户端连接时才发送数据
-        if !self.has_connections_sync() {
-            return; // 没有连接，直接返回，避免内存堆积
-        }
-
         let serialized = bcs::to_bytes(&objects).expect("serialization error");
         let len = serialized.len() as u32;
         let len_bytes = len.to_le_bytes();

@@ -2155,10 +2155,7 @@ impl AuthorityState {
             );
         }
 
-        // 🚨 MEV集成：只有在配置启用MEV功能时才发送交易数据
-        // 这避免了在没有MEV客户端时的内存泄漏问题
-        if self.config.enable_mev
-            && !certificate.transaction_data().is_system_tx()
+        if !certificate.transaction_data().is_system_tx()
             && !sui_events.is_empty()
         {
             let _ = self.tx_handler.send_sync(sui_events, transaction_outputs.effects.clone());

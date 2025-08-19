@@ -254,7 +254,6 @@ impl ValidatorConfigBuilder {
             execution_time_observer_config: self.execution_time_observer_config,
             chain_override_for_testing: self.chain_override,
             fork_recovery: None,
-            enable_mev: false, // MEV功能默认禁用
         }
     }
 
@@ -563,7 +562,6 @@ impl FullnodeConfigBuilder {
             execution_time_observer_config: None,
             chain_override_for_testing: self.chain_override,
             fork_recovery: None,
-            enable_mev: false, // MEV功能默认禁用
         }
     }
 }

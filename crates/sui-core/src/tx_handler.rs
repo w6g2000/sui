@@ -97,7 +97,7 @@ impl TxHandler {
                 conn.write_all(&payload).await?;
                 Ok(())
             }
-                .await;
+            .await;
 
             if res.is_ok() {
                 alive.push(conn);
