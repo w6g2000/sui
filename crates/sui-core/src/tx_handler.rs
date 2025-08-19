@@ -97,7 +97,7 @@ impl TxHandler {
                 conn.write_all(&payload).await?;
                 Ok(())
             }
-            .await;
+                .await;
 
             if res.is_ok() {
                 alive.push(conn);
@@ -110,21 +110,14 @@ impl TxHandler {
 
     /// 异步发送（不阻塞调用方）
     pub fn send_sync_msg(&self, msg: TxOutMsg) -> Result<()> {
-    /// 检查是否有活跃的MEV客户端连接
-    pub async fn has_active_connections(&self) -> bool {
-        let conns = self.conns.lock().await;
-        !conns.is_empty()
+        let handler = self.clone();
+        TOKIO_RT.spawn(async move {
+            if let Err(e) = handler.send_msg(&msg).await {
+                error!("IPC send failed: {:?}", e);
+            }
+        });
+        Ok(())
     }
-
-    /// 同步检查连接状态（非阻塞）
-    pub fn has_connections_sync(&self) -> bool {
-        // 使用try_lock避免阻塞，如果锁被占用则假设有连接
-        match self.conns.try_lock() {
-            Ok(conns) => !conns.is_empty(),
-            Err(_) => true, // 锁被占用，保守地假设有连接
-        }
-    }
-
 
     /// 便捷函数：从 `TransactionOutputs` 构造 wire 数据并异步发送
     pub fn send_sync(
@@ -132,13 +125,6 @@ impl TxHandler {
         sui_events: Vec<SuiEvent>,
         effect: TransactionEffects,
     ) -> Result<()> {
-
-        // 🚨 关键优化：只有在有MEV客户端连接时才发送数据
-        if !self.has_connections_sync() {
-            return Ok(()); // 没有连接，直接返回，避免内存堆积
-        }
-
-
         let msg = TxOutMsg {
             sui_events_json: serde_json::to_vec(&sui_events)?,
             effect_bcs: bcs::to_bytes(&effect)?, // 关键：effects -> BCS bytes
