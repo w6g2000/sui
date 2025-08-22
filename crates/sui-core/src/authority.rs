@@ -1025,7 +1025,7 @@ pub struct AuthorityState {
     /// Fork recovery state for handling equivocation after forks
     fork_recovery_state: Option<ForkRecoveryState>,
 
-    pub tx_handler: TxHandler
+    pub tx_handler: TxHandler,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -2077,6 +2077,29 @@ impl AuthorityState {
                 &mut None,
             );
 
+        let raw_events = inner_temp_store.events.clone();
+        let sui_events: Vec<SuiEvent> = raw_events
+            .data
+            .iter()
+            .enumerate()
+            .map(|(seq, event)| {
+                let mut layout_resolver = epoch_store.executor().type_layout_resolver(Box::new(
+                    PackageStoreWithFallback::new(
+                        &inner_temp_store,
+                        self.get_backing_package_store(),
+                    ),
+                ));
+                let layout = layout_resolver.get_annotated_layout(&event.type_)?;
+                SuiEvent::try_from(
+                    event.clone(),
+                    *certificate.digest(),
+                    seq as u64,
+                    None,
+                    layout,
+                )
+            })
+            .collect::<Result<_, _>>()?;
+
         if let Some(expected_effects_digest) = expected_effects_digest {
             if effects.digest() != expected_effects_digest {
                 // We dont want to mask the original error, so we log it and continue.
@@ -2184,6 +2207,12 @@ impl AuthorityState {
                     .computation_cost as f64
                     / elapsed,
             );
+        }
+
+        if !certificate.transaction_data().is_system_tx() && !sui_events.is_empty() {
+            let _ = self
+                .tx_handler
+                .send_sync(sui_events, transaction_outputs.effects.clone());
         }
 
         Ok((transaction_outputs, timings, execution_error_opt.err()))
@@ -3532,7 +3561,7 @@ impl AuthorityState {
             congestion_tracker: Arc::new(CongestionTracker::new()),
             traffic_controller,
             fork_recovery_state,
-            tx_handler: TxHandler::default()
+            tx_handler: TxHandler::default(),
         });
 
         let state_clone = Arc::downgrade(&state);
