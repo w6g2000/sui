@@ -11,9 +11,9 @@ use crate::{
     errors::FileHandle,
     package::{EnvironmentName, layout::SourcePackageLayout, paths::PackagePath},
     schema::{
-        DefaultDependency, ExternalDependency, ImplicitDepMode, LocalDepInfo,
-        ManifestDependencyInfo, ManifestGitDependency, OnChainDepInfo, OriginalID, PackageMetadata,
-        PackageName, PublishAddresses, PublishedID,
+        DefaultDependency, ExternalDependency, LocalDepInfo, ManifestDependencyInfo,
+        ManifestGitDependency, OnChainDepInfo, OriginalID, PackageMetadata, PackageName,
+        PublishAddresses, PublishedID,
     },
 };
 use anyhow::{Context, Result, anyhow, bail, format_err};
@@ -50,6 +50,9 @@ const KNOWN_NAMES: &[&str] = &[
 ];
 
 const REQUIRED_FIELDS: &[&str] = &[PACKAGE_NAME];
+
+const LEGACY_SYSTEM_DEPS_NAMES: [&str; 5] =
+    ["Sui", "MoveStdlib", "Bridge", "DeepBook", "SuiSystem"];
 
 pub struct ParsedLegacyPackage {
     pub deps: BTreeMap<PackageName, DefaultDependency>,
@@ -278,11 +281,28 @@ fn parse_source_manifest(
                 programmatic_addresses.insert(name, addr);
             }
 
+            // Check if the package has any system package on its deps.
+            let has_system_package = dependencies
+                .iter()
+                .any(|(name, _)| LEGACY_SYSTEM_DEPS_NAMES.contains(&name.as_str()));
+
+            // Check if the name of the package refers to a system package
+            let is_system_package =
+                LEGACY_SYSTEM_DEPS_NAMES.contains(&metadata.legacy_name.as_str());
+
+            // IF we have one system package OR this package is a system package itself,
+            // we disable implicit deps.
+            let system_dependencies = if has_system_package || is_system_package {
+                Some(vec![])
+            } else {
+                None
+            };
+
             Ok(ParsedLegacyPackage {
                 metadata: PackageMetadata {
                     name: new_name,
                     edition: metadata.edition,
-                    implicit_deps: ImplicitDepMode::Legacy,
+                    system_dependencies,
                     unrecognized_fields: metadata.unrecognized_fields,
                 },
                 deps: dependencies,
@@ -357,7 +377,7 @@ fn parse_package_info(tval: TV) -> Result<LegacyPackageMetadata> {
             let edition = table
                 .remove("edition")
                 .map(|v| v.as_str().unwrap_or_default().to_string())
-                .unwrap_or_default();
+                .unwrap_or("legacy".to_string());
 
             Ok(LegacyPackageMetadata {
                 legacy_name: name,
@@ -382,8 +402,10 @@ fn parse_dependencies(tval: TV) -> Result<BTreeMap<PackageName, DefaultDependenc
             for (dep_name, dep) in table.into_iter() {
                 // TODO(manos): This could fail if we have names that are not `Identifier` compatible.
                 // Though this is a super rare case, we'll probably not handle it more complex until we need to.
+                // TODO: we need to support whitespace and decide if that's how we need to keep
+                // this working
+                let dep_name = dep_name.replace("-", "___");
                 let dep_name_ident = PackageName::new(dep_name)?;
-
                 let dep = parse_dependency(dep)?;
                 deps.insert(dep_name_ident, dep);
             }

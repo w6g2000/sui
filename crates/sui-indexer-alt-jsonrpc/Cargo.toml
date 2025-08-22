@@ -15,7 +15,7 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-graphql = { workspace = true, default-features = false, features = ["dataloader"] }
+async-graphql = { workspace = true, features = ["dataloader"] }
 async-trait.workspace = true
 axum.workspace = true
 bcs.workspace = true
@@ -29,6 +29,7 @@ futures.workspace = true
 http.workspace = true
 jsonrpsee = { workspace = true, features = ["macros", "server"] }
 pin-project-lite.workspace = true
+pin-project.workspace = true
 prometheus.workspace = true
 schemars.workspace = true
 serde.workspace = true

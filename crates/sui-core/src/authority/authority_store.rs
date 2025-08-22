@@ -111,9 +111,9 @@ pub struct AuthorityStore {
     /// Internal vector of locks to manage concurrent writes to the database
     mutex_table: MutexTable<ObjectDigest>,
 
-    pub perpetual_tables: Arc<AuthorityPerpetualTables>,
+    pub(crate) perpetual_tables: Arc<AuthorityPerpetualTables>,
 
-    pub root_state_notify_read:
+    pub(crate) root_state_notify_read:
         NotifyRead<EpochId, (CheckpointSequenceNumber, GlobalStateHash)>,
 
     /// Whether to enable expensive SUI conservation check at epoch boundaries.
@@ -575,7 +575,7 @@ impl AuthorityStore {
 
     /// Insert a genesis object.
     /// TODO: delete this method entirely (still used by authority_tests.rs)
-    pub fn insert_genesis_object(&self, object: Object) -> SuiResult {
+    pub(crate) fn insert_genesis_object(&self, object: Object) -> SuiResult {
         // We only side load objects with a genesis parent transaction.
         debug_assert!(object.previous_transaction == TransactionDigest::genesis_marker());
         let object_ref = object.compute_object_reference();
@@ -610,7 +610,7 @@ impl AuthorityStore {
 
     /// This function should only be used for initializing genesis and should remain private.
     #[instrument(level = "debug", skip_all)]
-    pub fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SuiResult<()> {
+    pub(crate) fn bulk_insert_genesis_objects(&self, objects: &[Object]) -> SuiResult<()> {
         let mut batch = self.perpetual_tables.objects.batch();
         let ref_and_objects: Vec<_> = objects
             .iter()
@@ -825,7 +825,7 @@ impl AuthorityStore {
 
     /// Commits transactions only (not effects or other transaction outputs) to the db.
     /// See ExecutionCache::persist_transaction for more info
-    pub fn persist_transaction(&self, tx: &VerifiedExecutableTransaction) -> SuiResult {
+    pub(crate) fn persist_transaction(&self, tx: &VerifiedExecutableTransaction) -> SuiResult {
         let mut batch = self.perpetual_tables.transactions.batch();
         batch.insert_batch(
             &self.perpetual_tables.transactions,
@@ -921,7 +921,7 @@ impl AuthorityStore {
 
     /// Gets ObjectLockInfo that represents state of lock on an object.
     /// Returns UserInputError::ObjectNotFound if cannot find lock record for this object
-    pub fn get_lock(
+    pub(crate) fn get_lock(
         &self,
         obj_ref: ObjectRef,
         epoch_store: &AuthorityPerEpochStore,
@@ -953,7 +953,7 @@ impl AuthorityStore {
     }
 
     /// Returns UserInputError::ObjectNotFound if no lock records found for this object.
-    pub fn get_latest_live_version_for_object_id(
+    pub(crate) fn get_latest_live_version_for_object_id(
         &self,
         object_id: ObjectID,
     ) -> SuiResult<ObjectRef> {
@@ -1075,7 +1075,7 @@ impl AuthorityStore {
     }
 
     #[cfg(test)]
-    pub fn reset_locks_for_test(
+    pub(crate) fn reset_locks_for_test(
         &self,
         transactions: &[TransactionDigest],
         objects: &[ObjectRef],
@@ -1099,103 +1099,6 @@ impl AuthorityStore {
         self.initialize_live_object_markers_impl(&mut batch, objects, false)
             .unwrap();
         batch.write().unwrap();
-    }
-
-    /// This function is called at the end of epoch for each transaction that's
-    /// executed locally on the validator but didn't make to the last checkpoint.
-    /// The effects of the execution is reverted here.
-    /// The following things are reverted:
-    /// 1. All new object states are deleted.
-    /// 2. owner_index table change is reverted.
-    ///
-    /// NOTE: transaction and effects are intentionally not deleted. It's
-    /// possible that if this node is behind, the network will execute the
-    /// transaction in a later epoch. In that case, we need to keep it saved
-    /// so that when we receive the checkpoint that includes it from state
-    /// sync, we are able to execute the checkpoint.
-    /// TODO: implement GC for transactions that are no longer needed.
-    pub fn revert_state_update(&self, tx_digest: &TransactionDigest) -> SuiResult {
-        let Some(effects) = self.get_executed_effects(tx_digest)? else {
-            info!("Not reverting {:?} as it was not executed", tx_digest);
-            return Ok(());
-        };
-
-        info!(?tx_digest, ?effects, "reverting transaction");
-
-        // We should never be reverting shared object transactions.
-        assert!(effects.input_shared_objects().is_empty());
-
-        let mut write_batch = self.perpetual_tables.transactions.batch();
-        write_batch.delete_batch(
-            &self.perpetual_tables.executed_effects,
-            iter::once(tx_digest),
-        )?;
-        if effects.events_digest().is_some() {
-            write_batch.delete_batch(&self.perpetual_tables.events_2, [tx_digest])?;
-        }
-
-        let tombstones = effects
-            .all_tombstones()
-            .into_iter()
-            .map(|(id, version)| ObjectKey(id, version));
-        write_batch.delete_batch(&self.perpetual_tables.objects, tombstones)?;
-
-        let all_new_object_keys = effects
-            .all_changed_objects()
-            .into_iter()
-            .map(|((id, version, _), _, _)| ObjectKey(id, version));
-        write_batch.delete_batch(&self.perpetual_tables.objects, all_new_object_keys.clone())?;
-
-        let modified_object_keys = effects
-            .modified_at_versions()
-            .into_iter()
-            .map(|(id, version)| ObjectKey(id, version));
-
-        macro_rules! get_objects_and_locks {
-            ($object_keys: expr) => {
-                self.perpetual_tables
-                    .objects
-                    .multi_get($object_keys.clone())?
-                    .into_iter()
-                    .zip($object_keys)
-                    .filter_map(|(obj_opt, key)| {
-                        let obj = self
-                            .perpetual_tables
-                            .object(
-                                &key,
-                                obj_opt.unwrap_or_else(|| {
-                                    panic!("Older object version not found: {:?}", key)
-                                }),
-                            )
-                            .expect("Matching indirect object not found")?;
-
-                        if obj.is_immutable() {
-                            return None;
-                        }
-
-                        let obj_ref = obj.compute_object_reference();
-                        Some(obj.is_address_owned().then_some(obj_ref))
-                    })
-            };
-        }
-
-        let old_locks = get_objects_and_locks!(modified_object_keys);
-        let new_locks = get_objects_and_locks!(all_new_object_keys);
-
-        let old_locks: Vec<_> = old_locks.flatten().collect();
-
-        // Re-create old locks.
-        self.initialize_live_object_markers_impl(&mut write_batch, &old_locks, true)?;
-
-        // Delete new locks
-        write_batch.delete_batch(
-            &self.perpetual_tables.live_owned_object_markers,
-            new_locks.flatten(),
-        )?;
-
-        write_batch.write()?;
-
-        Ok(())
     }
 
     /// Return the object with version less then or eq to the provided seq number.

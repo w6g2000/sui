@@ -212,6 +212,7 @@ pub struct InternalFeatureConfig {
     pub(crate) logger: bool,
     pub(crate) query_timeout: bool,
     pub(crate) metrics: bool,
+    pub(crate) tracing: bool,
     pub(crate) apollo_tracing: bool,
     pub(crate) open_telemetry: bool,
 }
@@ -536,6 +537,7 @@ impl Default for InternalFeatureConfig {
             logger: true,
             query_timeout: true,
             metrics: true,
+            tracing: false,
             apollo_tracing: false,
             open_telemetry: false,
         }

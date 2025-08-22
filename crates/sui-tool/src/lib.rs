@@ -7,14 +7,13 @@ use fastcrypto::traits::ToFromBytes;
 use futures::future::join_all;
 use futures::future::AbortHandle;
 use itertools::Itertools;
-use object_store::ObjectStore;
-use std::cmp::min as cmp_min;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fs, io};
 use sui_config::{genesis::Genesis, NodeConfig};
 use sui_core::authority_client::{AuthorityAPI, NetworkAuthorityClient};
@@ -36,8 +35,6 @@ use sui_types::multiaddr::Multiaddr;
 use sui_types::{base_types::*, object::Owner};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tokio::time::sleep;
-use tokio::time::Duration;
 use tokio::time::Instant;
 
 use anyhow::anyhow;
@@ -1067,70 +1064,7 @@ pub async fn download_db_snapshot(
                 async move {
                     counter_cloned.fetch_add(1, Ordering::Relaxed);
                     let file_path = get_path(format!("epoch_{}/{}", epoch, file).as_str());
-
-                    if local_store.head(&file_path).await.is_ok() {
-                        // 这里的 head() 成功意味着“最终文件”已经原子落盘过，
-                        // 不是半截 .part，因此安全跳过
-                        return Ok::<::object_store::path::Path, anyhow::Error>(file_path.clone());
-                    }
-
-                    // Timeout + retry for transient R2/public-bucket issues
-                    let max_attempts: usize = 6;
-                    let mut attempt: usize = 0;
-                    let mut backoff_ms: u64 = 200;
-                    loop {
-                        match tokio::time::timeout(
-                            std::time::Duration::from_secs(240),
-                            copy_file(&file_path, &file_path, &remote_store, &local_store),
-                        )
-                        .await
-                        {
-                            Ok(Ok(())) => break,
-                            Ok(Err(e)) => {
-                                let es = e.to_string();
-                                let transient = es.contains("Failed to get header")
-                                    || es.contains("Missing last modified")
-                                    || es.contains("429")
-                                    || es.contains("timed out")
-                                    || es.contains("deadline")
-                                    || es.contains("connection")
-                                    || es.contains("timeout");
-                                attempt += 1;
-                                if !transient || attempt >= max_attempts {
-                                    return Err(e);
-                                }
-                                tracing::warn!(
-                                    "retrying {} (attempt {}): {}",
-                                    file_path,
-                                    attempt,
-                                    es
-                                );
-                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
-                                    .await;
-                                if backoff_ms < 5000 {
-                                    backoff_ms = (backoff_ms * 2).min(5000);
-                                }
-                                continue;
-                            }
-                            Err(_elapsed) => {
-                                attempt += 1;
-                                if attempt >= max_attempts {
-                                    return Err(anyhow::anyhow!("timeout"));
-                                }
-                                tracing::warn!(
-                                    "timeout when downloading {}, attempt {}",
-                                    file_path,
-                                    attempt
-                                );
-                                tokio::time::sleep(std::time::Duration::from_millis(backoff_ms))
-                                    .await;
-                                if backoff_ms < 5000 {
-                                    backoff_ms = (backoff_ms * 2).min(5000);
-                                }
-                                continue;
-                            }
-                        }
-                    }
+                    copy_file(&file_path, &file_path, &remote_store, &local_store).await?;
                     Ok::<::object_store::path::Path, anyhow::Error>(file_path.clone())
                 }
             })
@@ -1168,34 +1102,4 @@ pub async fn download_db_snapshot(
         fs::remove_dir_all(&epochs_dir)?;
     }
     Ok(())
-}
-
-async fn copy_with_retry(
-    file_path: ::object_store::path::Path,
-    remote_store: Arc<dyn ObjectStoreGetExt>,
-    local_store: Arc<dyn ObjectStore>,
-    max_attempts: usize,
-) -> Result<(), anyhow::Error> {
-    let mut attempt = 0usize;
-    let mut backoff = Duration::from_millis(200);
-    loop {
-        match copy_file(&file_path, &file_path, &remote_store, &local_store).await {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                let es = e.to_string();
-                let transient = es.contains("Failed to get header")
-                    || es.contains("Missing last modified")
-                    || es.contains("429")
-                    || es.contains("timed out")
-                    || es.contains("deadline")
-                    || es.contains("connection");
-                attempt += 1;
-                if !transient || attempt >= max_attempts {
-                    return Err(e);
-                }
-                sleep(backoff).await;
-                backoff = cmp_min(backoff * 2, Duration::from_secs(5));
-            }
-        }
-    }
 }
