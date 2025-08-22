@@ -48,16 +48,16 @@ pub const OBJECT_START_VERSION: SequenceNumber = SequenceNumber::from_u64(1);
 #[derive(Eq, PartialEq, Debug, Clone, Deserialize, Serialize, Hash)]
 pub struct MoveObject {
     /// The type of this object. Immutable
-    pub type_: MoveObjectType,
+    type_: MoveObjectType,
     /// DEPRECATED this field is no longer used to determine whether a tx can transfer this
     /// object. Instead, it is always calculated from the objects type when loaded in execution
-    pub has_public_transfer: bool,
+    has_public_transfer: bool,
     /// Number that increases each time a tx takes this object as a mutable input
     /// This is a lamport timestamp, not a sequentially increasing version
-    pub version: SequenceNumber,
+    version: SequenceNumber,
     /// BCS bytes of a Move struct value
     #[serde_as(as = "Bytes")]
-    pub contents: Vec<u8>,
+    contents: Vec<u8>,
 }
 
 /// Index marking the end of the object's ID + the beginning of its version
@@ -214,6 +214,10 @@ impl MoveObject {
 
         self.contents
             .splice(ID_END_INDEX.., timestamp_ms.to_le_bytes());
+    }
+
+    pub fn set_contents_unsafe(&mut self, contents: Vec<u8>) {
+        self.contents = contents;
     }
 
     pub fn is_coin(&self) -> bool {

@@ -4,7 +4,6 @@
 use move_core_types::ident_str;
 use move_core_types::identifier::IdentStr;
 use mysten_common::fatal;
-use serde::{Deserialize, Serialize};
 
 use crate::balance::Balance;
 use crate::base_types::ObjectID;
@@ -16,7 +15,7 @@ use crate::TypeTag;
 
 pub const ACCUMULATOR_MODULE_NAME: &IdentStr = ident_str!("accumulator");
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct AccumulatorEvent {
     pub accumulator_obj: ObjectID,
     pub write: AccumulatorWriteV1,

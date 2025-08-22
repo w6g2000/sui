@@ -33,12 +33,15 @@ use crate::{
 
 use super::{
     address::Address,
+    checkpoint::filter::checkpoint_bounds,
     epoch::Epoch,
     gas_input::GasInput,
     transaction::filter::TransactionFilter,
     transaction_effects::{EffectsContents, TransactionEffects},
     user_signature::UserSignature,
 };
+
+use super::transaction_kind::TransactionKind;
 
 pub(crate) mod filter;
 
@@ -75,6 +78,20 @@ impl Transaction {
     /// The results to the chain of executing this transaction.
     async fn effects(&self) -> Option<TransactionEffects> {
         Some(TransactionEffects::from(self.clone()))
+    }
+
+    /// The type of this transaction as well as the commands and/or parameters comprising the transaction of this kind.
+    async fn kind(&self, ctx: &Context<'_>) -> Result<Option<TransactionKind>, RpcError> {
+        let contents = self.contents.fetch(ctx, self.digest).await?;
+        let Some(content) = &contents.contents else {
+            return Ok(None);
+        };
+
+        let transaction_data = content.data()?;
+        Ok(TransactionKind::from(
+            transaction_data.kind().clone(),
+            contents.scope.clone(),
+        ))
     }
 
     #[graphql(flatten)]
@@ -180,7 +197,7 @@ impl Transaction {
         }))
     }
 
-    /// Cursor based pagination through transactions based on filters.
+    /// Cursor based pagination through transactions with filters applied.
     pub(crate) async fn paginate(
         ctx: &Context<'_>,
         scope: Scope,
@@ -199,9 +216,13 @@ impl Transaction {
 
         let global_tx_hi = watermarks.high_watermark().transaction();
 
-        let tx_digest_keys = if let Some(cp_bounds) =
-            filter.checkpoint_bounds(reader_lo, scope.checkpoint_viewed_at())
-        {
+        let tx_digest_keys = if let Some(cp_bounds) = checkpoint_bounds(
+            filter.after_checkpoint.map(u64::from),
+            filter.at_checkpoint.map(u64::from),
+            filter.before_checkpoint.map(u64::from),
+            reader_lo,
+            scope.checkpoint_viewed_at(),
+        ) {
             tx_unfiltered(ctx, &cp_bounds, &page, global_tx_hi).await?
         } else {
             return Ok(Connection::new(false, false));
@@ -316,18 +337,14 @@ async fn tx_unfiltered(
         .map(|cursor| cursor.saturating_add(1))
         .map_or(tx_hi, |cursor| cursor.min(tx_hi));
 
-    const PAGINATION_OVERHEAD: usize = 2; // For has_previous_page and has_next_page calculations.
-
     Ok(if page.is_from_front() {
-        (pg_lo..pg_hi)
-            .take(page.limit() + PAGINATION_OVERHEAD)
-            .collect()
+        (pg_lo..pg_hi).take(page.limit_with_overhead()).collect()
     } else {
         // Graphql last syntax expects results to be in ascending order. If we are paginating backwards,
         // we reverse the results after applying limits.
         let mut results: Vec<_> = (pg_lo..pg_hi)
             .rev()
-            .take(page.limit() + PAGINATION_OVERHEAD)
+            .take(page.limit_with_overhead())
             .collect();
         results.reverse();
         results

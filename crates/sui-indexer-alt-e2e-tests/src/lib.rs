@@ -19,8 +19,8 @@ use sui_indexer_alt_consistent_api::proto::rpc::consistent::v1alpha::{
     consistent_service_client::ConsistentServiceClient, AvailableRangeRequest,
 };
 use sui_indexer_alt_consistent_store::{
-    args::RpcArgs as ConsistentArgs, config::ServiceConfig as ConsistentConfig,
-    start_service as start_consistent_store,
+    args::RpcArgs as ConsistentArgs, args::TlsArgs as ConsistentTlsArgs,
+    config::ServiceConfig as ConsistentConfig, start_service as start_consistent_store,
 };
 use sui_indexer_alt_framework::{ingestion::ClientArgs, postgres::schema::watermarks, IndexerArgs};
 use sui_indexer_alt_graphql::{
@@ -31,7 +31,8 @@ use sui_indexer_alt_jsonrpc::{
     RpcArgs as JsonRpcArgs,
 };
 use sui_indexer_alt_reader::{
-    bigtable_reader::BigtableArgs, system_package_task::SystemPackageTaskArgs,
+    bigtable_reader::BigtableArgs, full_node_client::FullNodeArgs,
+    system_package_task::SystemPackageTaskArgs,
 };
 use sui_pg_db::{
     temp::{get_available_port, TempDb},
@@ -335,6 +336,7 @@ impl OffchainCluster {
 
         let consistent_args = ConsistentArgs {
             rpc_listen_address: consistent_listen_address,
+            tls: ConsistentTlsArgs::default(),
         };
 
         let jsonrpc_args = JsonRpcArgs {
@@ -399,6 +401,7 @@ impl OffchainCluster {
         let graphql = start_graphql(
             Some(database_url.clone()),
             None,
+            FullNodeArgs::default(),
             DbArgs::default(),
             BigtableArgs::default(),
             graphql_args,

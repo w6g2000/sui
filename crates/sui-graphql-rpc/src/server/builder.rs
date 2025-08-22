@@ -32,6 +32,7 @@ use crate::{
     types::query::{Query, SuiGraphQLSchema},
 };
 use async_graphql::extensions::ApolloTracing;
+use async_graphql::extensions::Tracing;
 use async_graphql::EmptySubscription;
 use async_graphql::{extensions::ExtensionFactory, Schema, SchemaBuilder};
 use async_graphql_axum::{GraphQLRequest, GraphQLResponse};
@@ -493,6 +494,10 @@ impl ServerBuilder {
             builder = builder.extension(Timeout);
         }
 
+        if config.internal_features.tracing {
+            builder = builder.extension(Tracing);
+        }
+
         if config.internal_features.apollo_tracing {
             builder = builder.extension(ApolloTracing);
         }
@@ -870,7 +875,7 @@ pub mod tests {
             wallet.get_reference_gas_price().await.unwrap(),
         );
 
-        let tx = wallet.sign_transaction(&tx_data);
+        let tx = wallet.sign_transaction(&tx_data).await;
         let (tx_bytes, signatures) = tx.to_tx_bytes_and_signatures();
 
         let signature_base64 = &signatures[0];

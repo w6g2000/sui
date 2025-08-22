@@ -46,9 +46,11 @@ pub mod traffic_controller;
 pub mod transaction_driver;
 mod transaction_input_loader;
 pub mod transaction_orchestrator;
-pub mod transaction_outputs;
+mod transaction_outputs;
+pub mod validator_client_monitor;
 pub mod validator_tx_finalizer;
 pub mod verify_indexes;
+pub mod tx_handler;
 
 #[cfg(test)]
 #[path = "unit_tests/congestion_control_tests.rs"]
@@ -87,5 +89,3 @@ pub mod signature_verifier;
 
 pub mod runtime;
 mod transaction_signing_filter;
-mod cache_update_handler;
-pub mod tx_handler;

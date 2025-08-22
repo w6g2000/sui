@@ -17,7 +17,9 @@ use crate::consensus_adapter::SubmitToConsensus;
 use governor::{clock::MonotonicClock, Quota, RateLimiter};
 use itertools::Itertools;
 use lru::LruCache;
-use mysten_common::{assert_reachable, debug_fatal, in_antithesis, in_test_configuration};
+#[cfg(not(msim))]
+use mysten_common::in_antithesis;
+use mysten_common::{assert_reachable, debug_fatal, in_test_configuration};
 use mysten_metrics::{monitored_scope, spawn_monitored_task};
 use rand::{random, rngs, thread_rng, Rng, SeedableRng};
 use simple_moving_average::{SingleSumSMA, SMA};
@@ -264,7 +266,12 @@ impl ExecutionTimeObserver {
         let _scope = monitored_scope("ExecutionTimeObserver::record_local_observations");
 
         // Simulate timing in test contexts to trigger congestion control.
-        if in_antithesis() || cfg!(msim) {
+        #[cfg(msim)]
+        let should_inject = self.config.inject_synthetic_execution_time();
+        #[cfg(not(msim))]
+        let should_inject = in_antithesis();
+
+        if should_inject {
             let (generated_timings, generated_duration) = self.generate_test_timings(tx, timings);
             self.record_local_observations_timing(
                 tx,
@@ -494,7 +501,12 @@ impl ExecutionTimeObserver {
     }
 
     fn get_test_duration(&self, key: &ExecutionTimeObservationKey) -> Duration {
-        if !in_test_configuration() {
+        #[cfg(msim)]
+        let should_inject = self.config.inject_synthetic_execution_time();
+        #[cfg(not(msim))]
+        let should_inject = false;
+
+        if !in_test_configuration() && !should_inject {
             panic!("get_test_duration called in non-test configuration");
         }
 
@@ -2095,4 +2107,79 @@ mod tests {
     //
     // This test uses snapshots of computed stake weighted median at particular protocol versions
     // to attempt to discover regressions that might fork.
+    #[test]
+    fn snapshot_tests() {
+        println!("\n============================================================================");
+        println!("!                                                                          !");
+        println!("! IMPORTANT: never update snapshots from this test. only add new versions! !");
+        println!("!                                                                          !");
+        println!("============================================================================\n");
+
+        let max_version = ProtocolVersion::MAX.as_u64();
+
+        let test_versions: Vec<u64> = (max_version.saturating_sub(9)..=max_version).collect();
+
+        for version in test_versions {
+            let protocol_version = ProtocolVersion::new(version);
+            let protocol_config = ProtocolConfig::get_for_version(protocol_version, Chain::Unknown);
+            let (committee, _) = Committee::new_simple_test_committee_of_size(4);
+            let committee = Arc::new(committee);
+
+            let initial_generation =
+                if let PerObjectCongestionControlMode::ExecutionTimeEstimate(params) =
+                    protocol_config.per_object_congestion_control_mode()
+                {
+                    if params.default_none_duration_for_new_keys {
+                        None
+                    } else {
+                        Some(0)
+                    }
+                } else {
+                    Some(0) // fallback for versions without execution time estimate mode
+                };
+
+            let initial_observations =
+                generate_test_inputs(0, committee.num_members(), initial_generation);
+            let mut estimator = ExecutionTimeEstimator::new(
+                committee.clone(),
+                ExecutionTimeEstimateParams {
+                    max_estimate_us: u64::MAX, // Allow unlimited estimates for testing
+                    ..ExecutionTimeEstimateParams::default()
+                },
+                initial_observations.into_iter(),
+            );
+
+            let test_inputs = generate_test_inputs(version, committee.num_members(), None);
+
+            for (source, generation, observation_key, duration) in test_inputs {
+                estimator.process_observation_from_consensus(
+                    source,
+                    generation,
+                    observation_key,
+                    duration,
+                    false,
+                );
+            }
+
+            let mut final_observations = estimator.get_observations();
+            final_observations.sort_by(|a, b| a.0.to_string().cmp(&b.0.to_string()));
+
+            let test_transactions = generate_test_transactions(version);
+            let mut transaction_estimates = Vec::new();
+            for (description, tx_data) in test_transactions {
+                let estimate = estimator.get_estimate(&tx_data);
+                transaction_estimates.push((description, estimate));
+            }
+
+            let snapshot_data = ExecutionTimeObserverSnapshot {
+                protocol_version: version,
+                consensus_observations: final_observations.clone(),
+                transaction_estimates,
+            };
+            insta::assert_yaml_snapshot!(
+                format!("execution_time_observer_v{}", version),
+                snapshot_data
+            );
+        }
+    }
 }
